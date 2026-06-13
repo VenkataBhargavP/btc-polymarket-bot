@@ -1,8 +1,51 @@
+import asyncio
 import time
 from decimal import Decimal
 from polymarket import AsyncPublicClient, AsyncSecureClient
 from polymarket.streams import MarketSpec, CryptoPricesSpec, UserSpec
 from backend.config import settings
+
+
+class _PollPriceTick:
+    """Minimal price event compatible with extract_prices_from_event()."""
+    __slots__ = ("token_id", "price")
+
+    def __init__(self, token_id: str, price: float):
+        self.token_id = token_id
+        self.price = price
+
+
+class _PollStream:
+    """Async context manager that polls REST midpoints every 2 s.
+    Used as a WebSocket fallback when AsyncSecureClient is unavailable
+    (paper mode with connect_readonly)."""
+    _INTERVAL = 2.0
+
+    def __init__(self, public_client, up_id: str, down_id: str):
+        self._pub = public_client
+        self._up_id = up_id
+        self._down_id = down_id
+        self._active = False
+
+    async def __aenter__(self):
+        self._active = True
+        return self
+
+    async def __aexit__(self, *_):
+        self._active = False
+
+    def __aiter__(self):
+        return self._gen()
+
+    async def _gen(self):
+        while self._active:
+            for token_id in (self._up_id, self._down_id):
+                try:
+                    price = float(await self._pub.get_midpoint(token_id=token_id))
+                    yield _PollPriceTick(token_id, price)
+                except Exception:
+                    pass
+            await asyncio.sleep(self._INTERVAL)
 
 
 class PolymarketClient:
@@ -22,6 +65,13 @@ class PolymarketClient:
             wallet=settings.polymarket_wallet_address,
         )
         await self._secure.setup_trading_approvals()
+
+    async def connect_readonly(self):
+        """Public REST client only — no auth, no network call at startup.
+        Market discovery uses list_markets(); prices use get_midpoint() polling
+        instead of WebSocket streaming. Safe for paper mode."""
+        self._public = AsyncPublicClient()
+        self._secure = None
 
     async def close(self):
         if self._secure:
@@ -103,15 +153,16 @@ class PolymarketClient:
     # ── Realtime stream ───────────────────────────────────────────────────────
 
     async def subscribe_market_and_btc(self, up_token_id: str, down_token_id: str):
-        """
-        Returns a merged async stream of:
-          - MarketPriceChangeEvent / MarketBestBidAskEvent for UP and DOWN tokens
-          - CryptoPricesBinanceEvent for BTC/USDT spot
-          - UserSpec for fill confirmations
-        """
-        stream = await self._secure.subscribe([
+        """Returns a price stream. In live mode: WebSocket via AsyncSecureClient
+        (includes UserSpec for fill confirmations). In paper mode: REST polling
+        fallback via _PollStream (no auth required)."""
+        if self._secure is None:
+            return _PollStream(self._public, up_token_id, down_token_id)
+        specs = [
             MarketSpec(token_ids=[up_token_id, down_token_id]),
             CryptoPricesSpec(topic="prices.crypto.binance", symbols=["btcusdt"]),
-            UserSpec(),
-        ])
+        ]
+        if settings.mode == "live":
+            specs.append(UserSpec())
+        stream = await self._secure.subscribe(specs)
         return stream

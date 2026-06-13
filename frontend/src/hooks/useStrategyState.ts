@@ -2,10 +2,11 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { BotState } from "../types";
 import { useWebSocket } from "./useWebSocket";
 
-const WS_URL =
-  typeof window !== "undefined"
-    ? `ws://${window.location.host}/ws`
-    : "ws://localhost:8000/ws";
+// In dev, connect directly to the backend to avoid Vite proxy WebSocket issues.
+// In production, the backend and frontend share the same host.
+const WS_URL = import.meta.env.DEV
+  ? "ws://localhost:8000/ws"
+  : `ws://${window.location.host}/ws`;
 
 const DEFAULT_STATE: BotState = {
   ts: 0,

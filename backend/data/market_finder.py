@@ -14,10 +14,13 @@ class MarketFinder:
     """
     Discovers upcoming BTC 5-min markets and schedules entry at T-30s.
     Pre-loads the next event when current event has < 60s remaining.
+    In paper mode, pass paper_engine so balance is checked against the
+    virtual wallet instead of the real on-chain wallet.
     """
 
-    def __init__(self, client):
+    def __init__(self, client, paper_engine=None):
         self._client = client
+        self._paper = paper_engine
         self._upcoming: list = []
         self._stop: bool = False
 
@@ -72,10 +75,13 @@ class MarketFinder:
         while not self._stop:
             next_mkt = self.get_next_market()
             if next_mkt and next_mkt.seconds_until <= PRE_ENTRY_SECONDS:
-                try:
-                    balance = float(await self._client.get_wallet_balance())
-                except Exception:
-                    balance = 0.0
+                if self._paper is not None:
+                    balance = self._paper.balance
+                else:
+                    try:
+                        balance = float(await self._client.get_wallet_balance())
+                    except Exception:
+                        balance = 0.0
 
                 bot_halted = getattr(engine, "bot_halted", False)
                 if bot_halted:

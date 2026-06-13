@@ -99,16 +99,17 @@ class StrategyEngine:
 
     async def _start_event(self, state: EventState) -> None:
         # 1. Place both MAKER limit orders simultaneously
+        qty = settings.entry_quantity_shares
         up_price, down_price = await asyncio.gather(
             self._om.buy(
                 token_id=state.up_token_id,
-                quantity=50,
+                quantity=qty,
                 price=0.50,
                 order_type="LIMIT",
             ),
             self._om.buy(
                 token_id=state.down_token_id,
-                quantity=50,
+                quantity=qty,
                 price=0.50,
                 order_type="LIMIT",
             ),

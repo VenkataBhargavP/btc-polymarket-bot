@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { BotState } from "../types";
 import { ModeToggle } from "./ModeToggle";
 
@@ -28,6 +28,11 @@ export function Header({ state, wsConnected }: Props) {
 
   async function resume() {
     await fetch("/api/resume", { method: "POST" });
+  }
+
+  async function forceExit() {
+    if (!confirm("Force-exit all positions now?")) return;
+    await fetch("/api/force-exit", { method: "POST" });
   }
 
   return (
@@ -67,6 +72,15 @@ export function Header({ state, wsConnected }: Props) {
         >
           {pausing ? "…" : state.bot_halted ? "Resume" : "Pause"}
         </button>
+
+        {state.phase !== "idle" && state.phase !== "done" && (
+          <button
+            onClick={forceExit}
+            className="text-xs px-3 py-1 rounded bg-red-800 hover:bg-red-700 text-red-100 font-bold"
+          >
+            Force Exit
+          </button>
+        )}
 
         <ModeToggle state={state} />
 

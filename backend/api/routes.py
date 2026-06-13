@@ -169,3 +169,20 @@ async def reset_paper():
     if _paper_engine:
         _paper_engine.reset()
     return {"reset": True, "balance": _paper_engine.balance if _paper_engine else 0}
+
+
+@router.post("/force-exit")
+async def force_exit():
+    """Immediately emergency-exit any active event. Use for dry-run testing."""
+    if not _engine or not _engine.state:
+        return {"exited": False, "reason": "No active event"}
+    state = _engine.state
+    if state.phase == "done":
+        return {"exited": False, "reason": "Event already done"}
+    from backend.strategy.engine import emergency_exit
+    await emergency_exit(state, "force_exit", _engine._om, _engine._client)
+    return {
+        "exited": True,
+        "realized_pnl": round(state.realized_pnl, 4),
+        "event_id": state.event_id,
+    }

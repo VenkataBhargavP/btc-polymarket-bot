@@ -125,10 +125,20 @@ async def websocket_endpoint(websocket: WebSocket):
     log.info("WebSocket client connected", extra={"client": str(websocket.client)})
     try:
         while True:
-            payload = _build_payload()
-            await websocket.send_text(json.dumps(payload))
+            try:
+                payload = _build_payload()
+                await websocket.send_text(json.dumps(payload))
+            except WebSocketDisconnect:
+                raise
+            except Exception as exc:
+                log.error("WebSocket push error", extra={"error": str(exc)})
             await asyncio.sleep(_PUSH_INTERVAL_S)
     except WebSocketDisconnect:
         log.info("WebSocket client disconnected")
     except Exception as exc:
-        log.error("WebSocket push error", extra={"error": str(exc)})
+        log.error("WebSocket fatal error", extra={"error": str(exc)})
+    finally:
+        try:
+            await websocket.close()
+        except Exception:
+            pass

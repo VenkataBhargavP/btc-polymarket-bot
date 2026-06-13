@@ -7,6 +7,7 @@ class Settings(BaseSettings):
 
     mode: str = "paper"
     initial_paper_balance: float = 1000.0
+    entry_quantity_shares: int = 50  # shares per side; $5 test = 5 shares @ $0.50
 
     move_threshold_points: int = 30
     window_1_duration: int = 30

@@ -69,13 +69,21 @@ async def lifespan(app: FastAPI):
     # Paper engine
     paper = PaperEngine(initial_balance=settings.initial_paper_balance)
 
-    # Polymarket client (live mode only; paper skips connect)
+    # Polymarket client
+    # Live: full auth + trading approvals.
+    # Paper with credentials: read-only (market discovery + price feed, no
+    #   on-chain trading approvals).  Without credentials: stays None (UI only).
     client = None
     if settings.mode == "live":
         from backend.polymarket.client import PolymarketClient
         client = PolymarketClient()
         await client.connect()
-        log.info("Polymarket client connected")
+        log.info("Polymarket client connected (live)")
+    elif settings.polymarket_private_key and settings.polymarket_wallet_address:
+        from backend.polymarket.client import PolymarketClient
+        client = PolymarketClient()
+        await client.connect_readonly()
+        log.info("Polymarket client connected (paper/readonly)")
 
     # Order manager
     om = OrderManager(
@@ -96,8 +104,14 @@ async def lifespan(app: FastAPI):
         extra={"consecutive_losses": consecutive_losses, "bot_halted": bot_halted},
     )
 
-    # Market finder
-    market_finder = MarketFinder(client=client) if client else None
+    # Market finder — in paper mode, pass paper_engine so balance is checked
+    # against the virtual wallet, not the real on-chain wallet.
+    market_finder = None
+    if client:
+        market_finder = MarketFinder(
+            client=client,
+            paper_engine=paper if settings.mode == "paper" else None,
+        )
 
     # Inject into API modules
     api_routes.inject(engine, paper, db)
@@ -121,7 +135,7 @@ async def lifespan(app: FastAPI):
         tasks.append(asyncio.create_task(market_finder.run_loop()))
         tasks.append(asyncio.create_task(market_finder.wait_and_enter(engine)))
     else:
-        log.info("Paper mode — market finder uses simulated clock")
+        log.info("No Polymarket credentials in .env — market finder disabled (UI-only mode)")
 
     # Graceful shutdown handler
     def _shutdown(*_):
