@@ -49,3 +49,6 @@ desktop.ini
 
 # ── Windows dev artifacts ─────────────────────────────────────────────────────
 *.bat~
+
+# ── Local handoff / session notes (never commit) ──────────────────────────────
+HANDOFF.md
